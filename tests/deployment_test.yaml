@@ -1,0 +1,725 @@
+suite: Deployment tests
+templates:
+  - deployment.yaml
+  - secret.yaml
+
+# Shared set of minimum valid values used across tests that are not testing a specific
+# combination. Override individual keys in tests as needed.
+# helm-unittest doesn't support anchors, so each test repeats the required set.
+
+tests:
+
+  - it: basic case renders a Deployment with expected structure
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - isKind:
+          of: Deployment
+        template: deployment.yaml
+      - equal:
+          path: metadata.name
+          value: test-iam-auth-proxy
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: oauth2-proxy
+        template: deployment.yaml
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "quay.io/oauth2-proxy/oauth2-proxy:v"
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+        template: deployment.yaml
+
+  - it: sets OAUTH2_PROXY_REVERSE_PROXY=true
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_REVERSE_PROXY
+            value: "true"
+        template: deployment.yaml
+
+  - it: does not set OAUTH2_PROXY_COOKIE_SECURE (relies on upstream default=true)
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_SECURE
+        template: deployment.yaml
+
+  - it: sets OIDC provider and credentials from chart-managed secret
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_PROVIDER
+            value: oidc
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_ISSUER_URL
+            valueFrom:
+              secretKeyRef:
+                name: test-iam-auth-proxy
+                key: issuer-url
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: test-iam-auth-proxy
+                key: client-id
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: test-iam-auth-proxy
+                key: cookie-secret
+        template: deployment.yaml
+
+  - it: existingSecret redirects all secretKeyRefs to the named secret
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.existingSecret: my-existing-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_ISSUER_URL
+            valueFrom:
+              secretKeyRef:
+                name: my-existing-secret
+                key: issuer-url
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: my-existing-secret
+                key: cookie-secret
+        template: deployment.yaml
+
+  - it: iam profile (default) sets groups scope and claim
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_SCOPE
+            value: "openid profile email offline_access groups"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM
+            value: "groups"
+        template: deployment.yaml
+
+  - it: wlcg profile sets wlcg.groups scope and claim
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: wlcg
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_SCOPE
+            value: "openid profile email offline_access wlcg.groups"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM
+            value: "wlcg.groups"
+        template: deployment.yaml
+
+  - it: aarc profile sets eduperson_entitlement scope and claim
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: aarc
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_SCOPE
+            value: "openid profile email offline_access eduperson_entitlement"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM
+            value: "eduperson_entitlement"
+        template: deployment.yaml
+
+  - it: custom profile with explicit scope and claim uses them verbatim
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: custom
+      authOptions.scope: "openid my-scope"
+      authOptions.oidcGroupsClaim: "my-groups"
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_SCOPE
+            value: "openid my-scope"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM
+            value: "my-groups"
+        template: deployment.yaml
+
+  - it: authOptions.scope overrides the iam profile preset
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: iam
+      authOptions.scope: "openid profile email"
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_SCOPE
+            value: "openid profile email"
+        template: deployment.yaml
+
+  - it: empty allowedGroups omits OAUTH2_PROXY_ALLOWED_GROUPS
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.allowedGroups: []
+    release:
+      name: test
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_ALLOWED_GROUPS
+        template: deployment.yaml
+
+  - it: allowedGroups are comma-joined into OAUTH2_PROXY_ALLOWED_GROUPS
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.allowedGroups:
+        - /wlcg/cms
+        - /wlcg/atlas
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_ALLOWED_GROUPS
+            value: "/wlcg/cms,/wlcg/atlas"
+        template: deployment.yaml
+
+  - it: empty whitelistDomains omits OAUTH2_PROXY_WHITELIST_DOMAINS
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.whitelistDomains: []
+    release:
+      name: test
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_WHITELIST_DOMAINS
+        template: deployment.yaml
+
+  - it: whitelistDomains are comma-joined into OAUTH2_PROXY_WHITELIST_DOMAINS
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.whitelistDomains:
+        - ".example.org"
+        - ".example.com"
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_WHITELIST_DOMAINS
+            value: ".example.org,.example.com"
+        template: deployment.yaml
+
+  - it: extraArgs are appended to container args
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.extraArgs:
+        - "--errors-to-info-log"
+        - "--whitelist-domain=other.example.org"
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--errors-to-info-log"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: "--whitelist-domain=other.example.org"
+        template: deployment.yaml
+
+  - it: empty extraArgs produces no args block
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.extraArgs: []
+    release:
+      name: test
+    asserts:
+      - isNull:
+          path: spec.template.spec.containers[0].args
+        template: deployment.yaml
+
+  - it: redirect URL and upstream are derived from ingress hostname and service
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 9000
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_REDIRECT_URL
+            value: "https://app.example.org/oauth2/callback"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_UPSTREAMS
+            value: "http://myapp:9000/"
+        template: deployment.yaml
+
+  - it: redirect URL incorporates non-root ingress path and custom proxyPrefix
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      ingress.path: /admin
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      authOptions.proxyPrefix: /sso
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_REDIRECT_URL
+            value: "https://app.example.org/admin/sso/callback"
+        template: deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_PROXY_PREFIX
+            value: "/admin/sso"
+        template: deployment.yaml
+
+  - it: pod-level securityContext is rendered
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+        template: deployment.yaml
+
+  - it: container-level securityContext is rendered
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        template: deployment.yaml
+
+  - it: liveness and readiness probes target /ping
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /ping
+        template: deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /ping
+        template: deployment.yaml
+
+  # --- Validation fail tests ---
+
+  - it: fails when both ingress and route are enabled
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: true
+      ingress.hostname: app.example.org
+      route.enabled: true
+      route.hostname: app.apps.cluster.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress.enabled and route.enabled cannot both be true — choose one entrypoint."
+        template: deployment.yaml
+
+  - it: fails when neither ingress nor route is enabled
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: false
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "At least one entrypoint must be enabled: set ingress.enabled=true or route.enabled=true."
+        template: deployment.yaml
+
+  - it: fails when issuerURL is missing and no existingSecret
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: ""
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "oidc.issuerURL is required when oidc.existingSecret is not set."
+        template: deployment.yaml
+
+  - it: fails when clientID is missing and no existingSecret
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: ""
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "oidc.clientID is required when oidc.existingSecret is not set."
+        template: deployment.yaml
+
+  - it: fails when clientSecret is missing and no existingSecret
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: ""
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "oidc.clientSecret is required when oidc.existingSecret is not set."
+        template: deployment.yaml
+
+  - it: credential validation is skipped when existingSecret is set
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.existingSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - isKind:
+          of: Deployment
+        template: deployment.yaml
+
+  - it: fails when iam.profile=custom and scope is missing
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: custom
+      authOptions.oidcGroupsClaim: "my-groups"
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "authOptions.scope is required when iam.profile=custom."
+        template: deployment.yaml
+
+  - it: fails when iam.profile=custom and oidcGroupsClaim is missing
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      iam.profile: custom
+      authOptions.scope: "openid my-scope"
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "authOptions.oidcGroupsClaim is required when iam.profile=custom."
+        template: deployment.yaml
+
+  # --- COOKIE_PATH tests ---
+
+  - it: COOKIE_PATH is / for ingress with root path
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      ingress.path: /
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_PATH
+            value: "/"
+        template: deployment.yaml
+
+  - it: COOKIE_PATH matches non-root ingress path
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      ingress.path: /admin
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_PATH
+            value: "/admin"
+        template: deployment.yaml
+
+  - it: COOKIE_PATH is / for route with root path
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.cluster.example.org
+      route.path: /
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_PATH
+            value: "/"
+        template: deployment.yaml
+
+  - it: COOKIE_PATH matches non-root route path
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.cluster.example.org
+      route.path: /tools
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH2_PROXY_COOKIE_PATH
+            value: "/tools"
+        template: deployment.yaml
+
+  # --- cookie.secret validation ---
+
+  - it: fails when cookie.secret length is not 16, 24, or 32 characters
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+      cookie.secret: "tooshort"
+    release:
+      name: test
+    asserts:
+      - failedTemplate:
+          errorMessage: "cookie.secret must be exactly 16, 24, or 32 characters for AES session encryption."
+        template: secret.yaml

@@ -1,0 +1,225 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "type": "object",
+    "required": ["upstream"],
+    "properties": {
+        "upstream": {
+            "type": "object",
+            "title": "Upstream Application",
+            "description": "The backend service to protect with SSO.",
+            "required": ["service"],
+            "properties": {
+                "service": {
+                    "type": "object",
+                    "required": ["name", "port"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "title": "Service name",
+                            "description": "Name of the Kubernetes Service to proxy to (e.g. 'my-app')"
+                        },
+                        "port": {
+                            "type": "integer",
+                            "title": "Service port",
+                            "description": "Port of the backend Service (e.g. 8080)"
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": true
+        },
+        "ingress": {
+            "type": "object",
+            "title": "Ingress Configuration",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "title": "Enable Ingress",
+                    "description": "Create a Kubernetes Ingress resource. Mutually exclusive with route.enabled."
+                },
+                "className": {
+                    "type": "string",
+                    "title": "Ingress class",
+                    "description": "IngressClass name (e.g. 'nginx', 'traefik'). Leave empty for the cluster default.",
+                    "examples": ["nginx"]
+                },
+                "hostname": {
+                    "type": "string",
+                    "title": "Public hostname",
+                    "description": "The hostname under which your application should be accessible (without https://). Required when ingress.enabled=true.",
+                    "examples": ["app.example.org"]
+                },
+                "path": {
+                    "type": "string",
+                    "title": "Path prefix",
+                    "description": "The subpath that gets protected by the SSO proxy.",
+                    "examples": ["/", "/admin"]
+                },
+                "tls": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "title": "Enable TLS",
+                            "description": "Add a TLS block to the Ingress resource."
+                        },
+                        "secretName": {
+                            "type": "string",
+                            "title": "TLS Secret name",
+                            "description": "Name of the TLS Secret. Leave empty to use the cluster default certificate or a cert-manager annotation."
+                        }
+                    },
+                    "additionalProperties": true
+                }
+            },
+            "additionalProperties": true
+        },
+        "route": {
+            "type": "object",
+            "title": "OpenShift Route Configuration",
+            "description": "Alternative to Ingress for OpenShift/OKD clusters. Mutually exclusive with ingress.enabled.",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "title": "Enable Route"
+                },
+                "hostname": {
+                    "type": "string",
+                    "title": "Public hostname",
+                    "description": "Required when route.enabled=true.",
+                    "examples": ["app.apps.mycluster.example.org"]
+                }
+            },
+            "additionalProperties": true
+        },
+        "oidc": {
+            "type": "object",
+            "title": "OIDC / IAM Credentials",
+            "description": "Credentials for the INDIGO IAM OIDC client. Register a client at your IAM instance (My Clients → New client) and provide the generated credentials here.",
+            "properties": {
+                "issuerURL": {
+                    "type": "string",
+                    "title": "IAM Issuer URL",
+                    "description": "Base URL of the IAM instance (e.g. https://iam.example.org/). The OIDC discovery document is at <issuerURL>/.well-known/openid-configuration.",
+                    "examples": ["https://iam.example.org/"]
+                },
+                "clientID": {
+                    "type": "string",
+                    "title": "Client ID"
+                },
+                "clientSecret": {
+                    "type": "string",
+                    "title": "Client Secret",
+                    "description": "Generated by IAM when you save the client registration."
+                },
+                "existingSecret": {
+                    "type": "string",
+                    "title": "Existing Secret name",
+                    "description": "Reference a pre-existing Secret (keys: client-id, client-secret, issuer-url, cookie-secret). Overrides the inline credentials above."
+                }
+            },
+            "additionalProperties": true
+        },
+        "iam": {
+            "type": "object",
+            "title": "IAM JWT Profile",
+            "properties": {
+                "profile": {
+                    "type": "string",
+                    "title": "Profile preset",
+                    "description": "Sets default OIDC scope and groups claim. 'iam': groups claim + groups scope (default). 'wlcg': wlcg.groups. 'aarc': eduperson_entitlement. 'custom': requires authOptions.scope and authOptions.oidcGroupsClaim.",
+                    "enum": ["iam", "wlcg", "aarc", "custom"],
+                    "examples": ["iam"]
+                }
+            },
+            "additionalProperties": true
+        },
+        "authOptions": {
+            "type": "object",
+            "title": "Authentication Options",
+            "properties": {
+                "allowedGroups": {
+                    "type": "array",
+                    "title": "Allowed IAM Groups",
+                    "description": "List of IAM group paths whose members are allowed to access the application. Empty means any authenticated user. IAM groups use path notation (e.g. /wlcg/cms/users).",
+                    "items": {
+                        "type": "string",
+                        "examples": ["/wlcg/cms/users"]
+                    }
+                },
+                "emailDomains": {
+                    "type": "array",
+                    "title": "Allowed Email Domains",
+                    "description": "Restrict access to users with an email in one of these domains. Use [\"*\"] to allow any domain.",
+                    "items": { "type": "string" }
+                },
+                "preferEmail": {
+                    "type": "boolean",
+                    "title": "Prefer email as username",
+                    "description": "Forward the email address as the X-Forwarded-User header to the upstream."
+                },
+                "proxyPrefix": {
+                    "type": "string",
+                    "title": "OAuth2 Proxy prefix",
+                    "description": "The path prefix used internally by oauth2-proxy. Must not be used by your application.",
+                    "examples": ["/oauth2"]
+                },
+                "cookieExpire": {
+                    "type": "string",
+                    "title": "Cookie expiration",
+                    "description": "How long authentication cookies remain valid (e.g. '12h', '24h').",
+                    "examples": ["12h", "24h"]
+                },
+                "whitelistDomains": {
+                    "type": "array",
+                    "title": "Whitelist Domains",
+                    "description": "Allowed post-login redirect domains. Prefix with '.' to match subdomains (e.g. '.example.org'). Leave empty to allow only the deployment hostname.",
+                    "items": { "type": "string" }
+                },
+                "scope": {
+                    "type": "string",
+                    "title": "OIDC Scope override",
+                    "description": "Override the profile-preset scope. Required when iam.profile=custom."
+                },
+                "oidcGroupsClaim": {
+                    "type": "string",
+                    "title": "Groups claim override",
+                    "description": "Override the profile-preset groups claim name. Required when iam.profile=custom."
+                },
+                "extraArgs": {
+                    "type": "array",
+                    "title": "Extra oauth2-proxy arguments",
+                    "description": "Additional CLI arguments passed to oauth2-proxy. These override environment-variable configuration.",
+                    "items": { "type": "string" }
+                }
+            },
+            "additionalProperties": true
+        },
+        "cookie": {
+            "type": "object",
+            "title": "Cookie Settings",
+            "properties": {
+                "secret": {
+                    "type": "string",
+                    "title": "Cookie secret",
+                    "description": "Plain-text string for cookie encryption (not base64-encoded). Must be exactly 16, 24, or 32 characters (AES-128, AES-192, AES-256). Leave empty to auto-generate and persist across Helm upgrades."
+                }
+            },
+            "additionalProperties": true
+        },
+        "podSecurityContext": {
+            "type": "object",
+            "title": "Pod Security Context",
+            "description": "Security context applied at the Pod level.",
+            "additionalProperties": true
+        },
+        "securityContext": {
+            "type": "object",
+            "title": "Container Security Context",
+            "description": "Security context applied to the oauth2-proxy container.",
+            "additionalProperties": true
+        }
+    },
+    "additionalProperties": true
+}

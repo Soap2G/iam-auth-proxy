@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "iam-auth-proxy.fullname" . }}
+  labels:
+    {{- include "iam-auth-proxy.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4180
+      targetPort: 4180
+      protocol: TCP
+      name: oauth2-proxy
+  selector:
+    {{- include "iam-auth-proxy.selectorLabels" . | nindent 4 }}
+  sessionAffinity: None

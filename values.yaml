@@ -1,0 +1,115 @@
+# Application this proxy fronts
+upstream:
+  service:
+    # Service name (required)
+    name: ""
+    # Service port (required)
+    port: 8080
+
+# Kubernetes Ingress entrypoint (mutually exclusive with route.enabled)
+ingress:
+  enabled: true
+  # IngressClass name (e.g. "nginx", "traefik")
+  className: ""
+  # Public hostname, without scheme (required when ingress.enabled=true)
+  hostname: ""
+  path: /
+  pathType: Prefix
+  annotations: {}
+  tls:
+    enabled: true
+    # Leave empty to rely on cluster wildcard/default issuer
+    secretName: ""
+
+# OpenShift Route entrypoint (mutually exclusive with ingress.enabled)
+route:
+  enabled: false
+  # Public hostname (required when route.enabled=true)
+  hostname: ""
+  path: /
+  annotations: {}
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# OIDC / IAM credentials
+oidc:
+  # Issuer URL of the IAM instance (e.g. https://iam.example.org/)
+  issuerURL: ""
+  clientID: ""
+  clientSecret: ""
+  # Reference a pre-existing Secret instead of the chart-managed one.
+  # Must have keys: client-id, client-secret, issuer-url, cookie-secret.
+  existingSecret: ""
+
+# IAM JWT profile preset — drives scope and groups-claim defaults.
+# iam    → scope: openid profile email offline_access groups  |  claim: groups
+# wlcg   → scope: openid profile email offline_access wlcg.groups  |  claim: wlcg.groups
+# aarc   → scope: openid profile email offline_access eduperson_entitlement  |  claim: eduperson_entitlement
+# custom → authOptions.scope and authOptions.oidcGroupsClaim are required
+iam:
+  profile: iam
+
+# Advanced authentication and proxy options
+authOptions:
+  # List of IAM group paths required for access (e.g. /wlcg/cms/users).
+  # Empty list means any authenticated user is allowed.
+  allowedGroups: []
+  # Restrict by email domain. "*" allows any domain.
+  emailDomains:
+    - "*"
+  # Forward the email address as the username header to the upstream.
+  preferEmail: true
+  # Path on which the OAuth2 proxy handles its own endpoints.
+  # Must not be used by the upstream application.
+  proxyPrefix: /oauth2
+  # Session cookie lifetime.
+  cookieExpire: 12h
+  # Allowed post-login redirect domains (e.g. ".example.org" allows *.example.org).
+  # Empty means only the deployment hostname is allowed (oauth2-proxy default).
+  # See: https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview
+  whitelistDomains: []
+  # Override the profile-preset OIDC scope. Required when iam.profile=custom.
+  scope: ""
+  # Override the profile-preset groups claim name. Required when iam.profile=custom.
+  oidcGroupsClaim: ""
+  # Extra CLI arguments appended to oauth2-proxy. These override env-var configuration.
+  # See: https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview
+  extraArgs: []
+
+# Cookie secret — leave empty to auto-generate and persist across upgrades.
+# Provide a plain-text string (not base64-encoded); the chart encodes it.
+# When provided, must be exactly 16, 24, or 32 characters (AES-128, AES-192, AES-256).
+cookie:
+  secret: ""
+
+image:
+  repository: quay.io/oauth2-proxy/oauth2-proxy
+  tag: v7.6.0
+  pullPolicy: IfNotPresent
+
+# Pod-level security context. Defaults enable PSS-restricted compliance.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context.
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 100Mi
+  requests:
+    cpu: 50m
+    memory: 20Mi
+
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""

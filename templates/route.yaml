@@ -1,0 +1,26 @@
+{{- if .Values.route.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "iam-auth-proxy.fullname" . }}
+  labels:
+    {{- include "iam-auth-proxy.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ .Values.route.hostname }}
+  {{- if and .Values.route.path (ne .Values.route.path "/") }}
+  path: {{ .Values.route.path }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "iam-auth-proxy.fullname" . }}
+  port:
+    targetPort: oauth2-proxy
+  tls:
+    termination: {{ .Values.route.tls.termination | default "edge" }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy | default "Redirect" }}
+  wildcardPolicy: None
+{{- end }}

@@ -1,0 +1,93 @@
+suite: Route tests
+templates:
+  - route.yaml
+tests:
+
+  - it: Route is rendered when route.enabled is true
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.mycluster.example.org
+    release:
+      name: test
+    asserts:
+      - isKind:
+          of: Route
+      - equal:
+          path: metadata.name
+          value: test-iam-auth-proxy
+      - equal:
+          path: spec.host
+          value: app.apps.mycluster.example.org
+      - equal:
+          path: spec.to.name
+          value: test-iam-auth-proxy
+      - equal:
+          path: spec.port.targetPort
+          value: oauth2-proxy
+      - equal:
+          path: spec.tls.termination
+          value: edge
+      - equal:
+          path: spec.tls.insecureEdgeTerminationPolicy
+          value: Redirect
+
+  - it: no Route rendered when route.enabled is false (default)
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: true
+      ingress.hostname: app.example.org
+    release:
+      name: test
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: non-root path is included in the Route spec
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.mycluster.example.org
+      route.path: /admin
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: spec.path
+          value: /admin
+
+  - it: root path is omitted from the Route spec
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.mycluster.example.org
+      route.path: /
+    release:
+      name: test
+    asserts:
+      - isNull:
+          path: spec.path
+
+  - it: route annotations are rendered
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.enabled: false
+      route.enabled: true
+      route.hostname: app.apps.mycluster.example.org
+      route.annotations:
+        haproxy.router.openshift.io/ip_whitelist: "188.184.0.0/15"
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: metadata.annotations
+          value:
+            haproxy.router.openshift.io/ip_whitelist: "188.184.0.0/15"

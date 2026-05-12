@@ -1,0 +1,18 @@
+Your application will be available at:
+  https://{{ include "iam-auth-proxy.hostname" . }}{{ trimSuffix "/" (include "iam-auth-proxy.cookiePath" .) }}
+
+Before your first login will work, register the following redirect URI in your
+INDIGO IAM client (IAM dashboard → My Clients → your client → Redirect URIs):
+
+  {{ include "iam-auth-proxy.redirectUri" . }}
+
+If you haven't registered a client yet:
+  1. Go to your IAM instance → My Clients → New client
+  2. Set the Redirect URI shown above
+  3. Enable the "offline_access" scope for refresh-token support
+  4. Save — IAM will display the generated client_id and client_secret
+  5. Store those in a Kubernetes Secret or pass them as Helm values
+
+IAM JWT profile in use: {{ .Values.iam.profile }}
+Groups claim:           {{ include "iam-auth-proxy.oidcGroupsClaim" . }}
+Scope:                  {{ include "iam-auth-proxy.scope" . }}
