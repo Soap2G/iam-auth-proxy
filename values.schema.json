@@ -116,7 +116,7 @@
                 "existingSecret": {
                     "type": "string",
                     "title": "Existing Secret name",
-                    "description": "Reference a pre-existing Secret (keys: client-id, client-secret, issuer-url, cookie-secret). Overrides the inline credentials above."
+                    "description": "Reference a pre-existing Secret (keys: clientID, clientSecret, issuerURL, suggestedCookieSecret). Overrides the inline credentials above."
                 }
             },
             "additionalProperties": true

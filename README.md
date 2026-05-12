@@ -95,10 +95,10 @@ Create a Secret manually and reference it. This is recommended for GitOps workfl
 
 ```bash
 kubectl create secret generic my-oidc-secret \
-  --from-literal=issuer-url=https://iam.example.org/ \
-  --from-literal=client-id=my-client \
-  --from-literal=client-secret=my-secret \
-  --from-literal=cookie-secret=$(openssl rand -hex 16)
+  --from-literal=issuerURL=https://iam.example.org/ \
+  --from-literal=clientID=my-client \
+  --from-literal=clientSecret=my-secret \
+  --from-literal=suggestedCookieSecret=$(openssl rand -hex 16)
 ```
 
 ```yaml

@@ -139,8 +139,8 @@ secret so we don't rotate the cookie on every upgrade, or generate a new one.
 {{- else }}
 {{- $secretName := include "iam-auth-proxy.fullname" . }}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName }}
-{{- if and $existing $existing.data (index $existing.data "cookie-secret") }}
-{{- index $existing.data "cookie-secret" }}
+{{- if and $existing $existing.data (index $existing.data "suggestedCookieSecret") }}
+{{- index $existing.data "suggestedCookieSecret" }}
 {{- else }}
 {{- randAlphaNum 32 | b64enc }}
 {{- end }}

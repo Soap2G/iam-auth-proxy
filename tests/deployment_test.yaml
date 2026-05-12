@@ -40,6 +40,22 @@ tests:
           value: IfNotPresent
         template: deployment.yaml
 
+  - it: app.openshift.io/connects-to annotation uses the JSON-array form pointing to the upstream Deployment
+    set:
+      upstream.service.name: myapp
+      upstream.service.port: 8080
+      ingress.hostname: app.example.org
+      oidc.issuerURL: https://iam.example.org/
+      oidc.clientID: my-client
+      oidc.clientSecret: my-secret
+    release:
+      name: test
+    asserts:
+      - equal:
+          path: metadata.annotations["app.openshift.io/connects-to"]
+          value: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"myapp"}]'
+        template: deployment.yaml
+
   - it: sets OAUTH2_PROXY_REVERSE_PROXY=true
     set:
       upstream.service.name: myapp
@@ -99,7 +115,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: test-iam-auth-proxy
-                key: issuer-url
+                key: issuerURL
         template: deployment.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -108,7 +124,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: test-iam-auth-proxy
-                key: client-id
+                key: clientID
         template: deployment.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -117,7 +133,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: test-iam-auth-proxy
-                key: cookie-secret
+                key: suggestedCookieSecret
         template: deployment.yaml
 
   - it: existingSecret redirects all secretKeyRefs to the named secret
@@ -136,7 +152,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: my-existing-secret
-                key: issuer-url
+                key: issuerURL
         template: deployment.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -145,7 +161,7 @@ tests:
             valueFrom:
               secretKeyRef:
                 name: my-existing-secret
-                key: cookie-secret
+                key: suggestedCookieSecret
         template: deployment.yaml
 
   - it: iam profile (default) sets groups scope and claim

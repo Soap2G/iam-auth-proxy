@@ -39,7 +39,7 @@ oidc:
   clientID: ""
   clientSecret: ""
   # Reference a pre-existing Secret instead of the chart-managed one.
-  # Must have keys: client-id, client-secret, issuer-url, cookie-secret.
+  # Must have keys: clientID, clientSecret, issuerURL, suggestedCookieSecret.
   existingSecret: ""
 
 # IAM JWT profile preset — drives scope and groups-claim defaults.
